@@ -15,7 +15,7 @@ try:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.3, 5)
         body = body_cascade.detectMultiScale(gray, 1.3, 5)
-        while len(faces) + len(body) > 0:
+        if len(faces) + len(body) > 0:
             GPIO.output(18, 1)
             sleep(0.1)
             GPIO.output(18, 0)
