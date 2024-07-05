@@ -1,25 +1,38 @@
+import face_recognition
+import cv2
 import RPi.GPIO as GPIO
 from time import sleep
-import cv2
-
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(18, GPIO.OUT)
 
-try:
-    cap = cv2.VideoCapture(0)
-    while True:
-        ret, frame = cap.read()
-        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        body_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_upperbody.xml')
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
-        body = body_cascade.detectMultiScale(gray, 1.3, 5)
-        if len(faces) + len(body) > 0:
-            GPIO.output(18, 1)
-            sleep(0.1)
-            GPIO.output(18, 0)
-            sleep(0.1)
+ref_image = face_recognition.load_image_file("ref.png")
+ref_encoding = face_recognition.face_encodings(ref_image)[0]
 
-finally:
-    GPIO.cleanup()
+video_capture = cv2.VideoCapture(0)
+
+while True:
+    ret, frame = video_capture.read()
+    small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+    face_locations = face_recognition.face_locations(small_frame)
+    face_encodings = face_recognition.face_encodings(small_frame, face_locations)
+
+    intruder_detected = False
+
+    for face_encoding in face_encodings:
+        match = face_recognition.compare_faces([ref_encoding], face_encoding)
+
+        if not match[0]:
+            intruder_detected = True
+            break
+
+    if intruder_detected:
+        GPIO.output(18, 1)  
+        print("fire")
+        sleep(1)
+        GPIO.output(18, 0) 
+    else:
+        print("don't fire")  
+
+video_capture.release()
+GPIO.cleanup()
