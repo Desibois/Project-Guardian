@@ -1,38 +1,59 @@
-import face_recognition
+import threading
 import cv2
+import face_recognition as fr
 import RPi.GPIO as GPIO
 from time import sleep
 
+cap = cv2.VideoCapture(0)
+counter = 0
+match = False
+lock = threading.Lock()
+ref_image = fr.load_image_file("ref.jpg")
+ref_encoding = fr.face_encodings(ref_image)[0]
+presence = False
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(18, GPIO.OUT)
+GPIO.setup(18, GPIO.OUT) 
 
-ref_image = face_recognition.load_image_file("ref.png")
-ref_encoding = face_recognition.face_encodings(ref_image)[0]
 
-video_capture = cv2.VideoCapture(0)
+def check(frame):
+    global match
+    global presence
+    face_locations = fr.face_locations(frame)
+    face_encodings = fr.face_encodings(frame, face_locations)
+    
+    local_match = False
+    for face_encoding in face_encodings:
+        local_match = fr.compare_faces([ref_encoding], face_encoding)[0]
+        if local_match:
+            break
+    
+    with lock:
+        if len(face_encodings) > 0:
+            presence = True
+        else:
+            presence = False
+        match = local_match
 
 while True:
-    ret, frame = video_capture.read()
-    small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-    face_locations = face_recognition.face_locations(small_frame)
-    face_encodings = face_recognition.face_encodings(small_frame, face_locations)
-
-    intruder_detected = False
-
-    for face_encoding in face_encodings:
-        match = face_recognition.compare_faces([ref_encoding], face_encoding)
-
-        if not match[0]:
-            intruder_detected = True
-            break
-
-    if intruder_detected:
-        GPIO.output(18, 1)  
-        print("fire")
-        sleep(1)
-        GPIO.output(18, 0) 
+    ret, frame = cap.read()
+    if ret:
+        if counter % 15 == 0:
+            try:
+                threading.Thread(target=check, args=(frame.copy(),)).start()
+            except ValueError as e:
+                print(f"Thread error: {e}")
+        counter += 1
+        
+        with lock:
+            if presence:
+                if match:
+                    print("DON'T FIRE")
+                else:
+                    print("FIRE")
+                    GPIO.output(18, 1)  
+                    sleep(0.1)
+                    GPIO.output(18, 0) 
+            else:
+                print("NO ONE DETECTED")
     else:
-        print("don't fire")  
-
-video_capture.release()
-GPIO.cleanup()
+        print("Failed to capture frame")
